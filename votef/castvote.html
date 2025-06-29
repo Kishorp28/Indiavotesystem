@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cast Your Vote</title>
+    <style>
+        body {
+            font-family: 'Poppins', Arial, sans-serif;
+            background:
+             url('https://thelegalquorum.com/wp-content/uploads/2024/11/DALL%C2%B7E-2024-11-20-22.52.01-A-visually-compelling-landscape-cover-image-for-an-article-on-sedition-laws-in-India.-The-image-features-a-balanced-composition_-on-one-side-historic-1024x585.webp') no-repeat center center fixed;
+            background-size: cover;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background: #fff;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h2 {
+            text-align: center;
+        }
+        .candidates {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .candidate {
+            display: flex;
+            align-items: center;
+            background: #f9f9f9;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
+            cursor: pointer;
+            transition: border 0.2s;
+        }
+        .candidate.selected {
+            border: 2px solid #007bff;
+            background: #e6f0ff;
+        }
+        .candidate img {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            margin-right: 16px;
+        }
+        .candidate-details {
+            flex: 1;
+        }
+        .candidate-name {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .candidate-party {
+            color: #555;
+        }
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0; top: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.4);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #fff;
+            padding: 32px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 300px;
+        }
+        .modal-content img {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin-bottom: 16px;
+        }
+        .modal-buttons {
+            margin-top: 24px;
+            display: flex;
+            justify-content: space-around;
+        }
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+        .btn-confirm {
+            background: #007bff;
+            color: #fff;
+        }
+        .btn-cancel {
+            background: #ccc;
+            color: #333;
+        }
+        .success-message {
+            color: green;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .error-message {
+            color: red;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .candidate.disabled {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Cast Your Vote</h2>
+        <div style="text-align:center; margin-bottom:16px;">
+            <span id="timer" style="font-size:1.1em; color:#d9534f; font-weight:bold;"></span>
+        </div>
+        <div class="candidates" id="candidatesList">
+            <!-- Candidates will be rendered here -->
+        </div>
+        <div class="success-message" id="successMsg"></div>
+        <div class="error-message" id="errorMsg"></div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal" id="confirmModal">
+        <div class="modal-content">
+            <img id="modalProfile" src="" alt="Profile">
+            <div class="candidate-name" id="modalName"></div>
+            <div class="candidate-party" id="modalParty"></div>
+            <div class="modal-buttons">
+                <button class="btn btn-confirm" id="confirmBtn">Confirm</button>
+                <button class="btn btn-cancel" id="cancelBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Fetch candidates from backend
+        let candidates = [];
+        let voterId = null;
+
+        const candidatesList = document.getElementById('candidatesList');
+        const confirmModal = document.getElementById('confirmModal');
+        const modalName = document.getElementById('modalName');
+        const modalParty = document.getElementById('modalParty');
+        const modalProfile = document.getElementById('modalProfile');
+        const confirmBtn = document.getElementById('confirmBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const successMsg = document.getElementById('successMsg');
+        const errorMsg = document.getElementById('errorMsg');
+
+        let selectedCandidate = null;
+        let timerInterval = null;
+        let timeLeft = 60; // seconds
+
+        const DEFAULT_AVATAR = 'https://img.freepik.com/premium-vector/male-face-avatar-icon-set-flat-design-social-media-profiles_1281173-3806.jpg?semt=ais_hybrid&w=740';
+
+        // Party color utility
+        const PARTY_COLORS = [
+            '#007bff', '#dc3545', '#28a745', '#ffc107', '#6f42c1', '#17a2b8', '#fd7e14', '#20c997', '#343a40', '#6c757d'
+        ];
+        const partyColorMap = {};
+        function getPartyColor(party) {
+            if (!party) return '#bbb';
+            if (!partyColorMap[party]) {
+                partyColorMap[party] = PARTY_COLORS[Object.keys(partyColorMap).length % PARTY_COLORS.length];
+            }
+            return partyColorMap[party];
+        }
+
+        // Timer logic
+        function startTimer() {
+            const timerDisplay = document.getElementById('timer');
+            timerDisplay.textContent = formatTime(timeLeft);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                if (timeLeft >= 0) {
+                    timerDisplay.textContent = formatTime(timeLeft);
+                }
+                if (timeLeft === 0) {
+                    clearInterval(timerInterval);
+                    timerDisplay.textContent = 'Time ended';
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1500);
+                }
+            }, 1000);
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `Time left: ${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // Prompt for voter ID on page load
+        function getVoterId() {
+            voterId = localStorage.getItem('voterId');
+            if (!voterId) {
+                voterId = prompt('Please enter your Voter ID:');
+                if (voterId) {
+                    localStorage.setItem('voterId', voterId);
+                } else {
+                    alert('Voter ID is required to vote.');
+                    window.location.href = 'dashboard.html';
+                }
+            }
+        }
+
+        // Fetch candidates from backend
+        async function fetchCandidates() {
+            try {
+                const response = await fetch('http://localhost:3002/candidates');
+                if (!response.ok) throw new Error('Failed to fetch candidates');
+                candidates = await response.json();
+                renderCandidates();
+            } catch (err) {
+                errorMsg.textContent = 'Could not load candidates: ' + err.message;
+            }
+        }
+
+        // Render candidates
+        function renderCandidates() {
+            candidatesList.innerHTML = '';
+            candidates.forEach(candidate => {
+                const div = document.createElement('div');
+                div.className = 'candidate';
+                div.innerHTML = `
+                    <img src="${candidate.photo || candidate.profile || ''}" alt="${candidate.name}">
+                    <div class="candidate-details">
+                        <div class="candidate-name">${candidate.name}</div>
+                        <div class="candidate-party">${candidate.party}</div>
+                    </div>
+                `;
+                div.onclick = () => onCandidateClick(candidate, div);
+                candidatesList.appendChild(div);
+            });
+        }
+
+        // Handle candidate click
+        function onCandidateClick(candidate, div) {
+            // Deselect all
+            document.querySelectorAll('.candidate').forEach(el => el.classList.remove('selected'));
+            // Select current
+            div.classList.add('selected');
+            selectedCandidate = candidate;
+            showConfirmation(candidate);
+        }
+
+        // Show confirmation modal
+        function showConfirmation(candidate) {
+            modalName.textContent = candidate.name;
+            modalParty.textContent = candidate.party;
+            modalProfile.src = candidate.photo || candidate.profile || '';
+            confirmModal.style.display = 'flex';
+        }
+
+        // Hide modal
+        function hideModal() {
+            confirmModal.style.display = 'none';
+        }
+
+        // Disable all voting actions after a successful vote
+        function disableVoting() {
+            document.querySelectorAll('.candidate').forEach(el => {
+                el.classList.add('disabled');
+                el.onclick = null;
+            });
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+        }
+
+        // Send vote to backend
+        async function submitVote(candidate) {
+            try {
+                const response = await fetch('http://localhost:3002/votes', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        candidateName: candidate.name
+                    })
+                });
+                if (response.ok) {
+                    successMsg.textContent = 'Your vote has been cast successfully!';
+                    errorMsg.textContent = '';
+                    localStorage.setItem('voteCasted', 'true');
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1000);
+                } else {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Failed to cast vote.');
+                }
+            } catch (err) {
+                errorMsg.textContent = err.message;
+                successMsg.textContent = '';
+            }
+        }
+
+        // Modal button events
+        confirmBtn.onclick = () => {
+            hideModal();
+            if (selectedCandidate) {
+                submitVote(selectedCandidate);
+            }
+        };
+        cancelBtn.onclick = () => {
+            hideModal();
+            // Deselect all
+            document.querySelectorAll('.candidate').forEach(el => el.classList.remove('selected'));
+            selectedCandidate = null;
+        };
+
+        // Initial load
+        getVoterId();
+        fetchCandidates();
+        startTimer();
+    </script>
+</body>
+</html>
